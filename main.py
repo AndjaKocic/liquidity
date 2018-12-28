@@ -1,10 +1,15 @@
-# problem 1.1, 1.2
 import os
+import sys
 import csv
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from dateutil.parser import parse
 from dateutil.relativedelta import relativedelta
+
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from db import engine, text, Session, Security, PrefferedStockOrderLog, OrdinaryStockOrderLog, BondOrderLog, TradeLog
 
@@ -267,8 +272,82 @@ def part2(session):
 
 
 def part3(session):
-    pass
+    global seccode, timestamp, date
 
+    sql_query = f'select min(time), max(time) from trade_log'
+    min_max_time = list(engine.execute(text(sql_query)))[0]
+    min_time, max_time = min_max_time
+    min_datetime = datetime.fromtimestamp(min_time)
+    max_datetime = datetime.fromtimestamp(max_time)
+    print('min_datetime:', min_datetime)
+    print('max_datetime:', max_datetime)
+    
+    date = min_datetime.isoformat()
+    print(f'enter date ({date}):')
+    dt0 = input() or date
+    dt0 = parse(dt0)
+    timestamp0 = dt0.timestamp()
+    print('timestamp0:', timestamp0)
+
+    dt1 = dt0 + timedelta(days=1)
+    timestamp1 = dt1.timestamp()
+    print('timestamp1:', timestamp1)
+
+    if not (min_time <= timestamp0 <= max_time):
+        print('Invalid date')
+        sys.exit(1)
+
+    sql_query = f'select distinct seccode from trade_log where time between {timestamp0} and {timestamp1}'
+    seccodes = list(engine.execute(text(sql_query)))
+    seccodes = [n[0] for n in seccodes]
+    print('seccodes:', seccodes)
+
+    print(f'enter seccode ({seccode}):')
+    seccode = input() or seccode
+    print('seccode:', seccode)
+
+    buy_order_logs = []
+    sql_query = f'select price, sum(volume) from preffered_stock_order_log where seccode="{seccode}" and buysell = "B" and time between {timestamp0} and {timestamp1} and price > 0 group by price order by price desc'
+    buy_order_logs += list(engine.execute(text(sql_query)))
+    sql_query = f'select price, sum(volume) from ordinary_stock_order_log where seccode="{seccode}" and buysell = "B" and time between {timestamp0} and {timestamp1} and price > 0 group by price order by price desc'
+    buy_order_logs += list(engine.execute(text(sql_query)))
+    sql_query = f'select price, sum(volume) from bond_order_log where seccode="{seccode}" and buysell = "B" and time between {timestamp0} and {timestamp1} and price > 0 group by price order by price desc'
+    buy_order_logs += list(engine.execute(text(sql_query)))
+    
+    sell_order_logs = []
+    sql_query = f'select price, sum(volume) from preffered_stock_order_log where seccode="{seccode}" and buysell = "S" and time between {timestamp0} and {timestamp1} and price > 0 group by price order by price asc'
+    sell_order_logs += list(engine.execute(text(sql_query)))
+    sql_query = f'select price, sum(volume) from ordinary_stock_order_log where seccode="{seccode}" and buysell = "S" and time between {timestamp0} and {timestamp1} and price > 0 group by price order by price asc'
+    sell_order_logs += list(engine.execute(text(sql_query)))
+    sql_query = f'select price, sum(volume) from bond_order_log where seccode="{seccode}" and buysell = "S" and time between {timestamp0} and {timestamp1} and price > 0 group by price order by price asc'
+    sell_order_logs += list(engine.execute(text(sql_query)))
+    
+    best_5_buy_order_logs = buy_order_logs[:5]
+    best_5_sell_order_logs = sell_order_logs[:5]
+    min_buy = max(best_5_buy_order_logs)[0]
+    min_sell = min(best_5_sell_order_logs)[0]
+    spread = min_buy - min_sell
+    avg_price = (min_sell + min_buy) / 2.0
+    print('spread:', spread, '(', min_sell, '-', min_buy, ')')
+    print('avg_price:', avg_price)
+    print('best_5_buy_order_logs:', best_5_buy_order_logs)
+    print('best_5_sell_order_logs:', best_5_sell_order_logs)
+    print('sum of best_5_buy_order_logs:', sum(n[0] for n in best_5_buy_order_logs))
+    print('sum of best_5_sell_order_logs:', sum(n[0] for n in best_5_sell_order_logs))
+
+    fig, ax = plt.subplots()
+    ax.plot([n[0] for n in best_5_buy_order_logs], [n[1] for n in best_5_buy_order_logs], 'k--', label='Bid')
+    ax.plot([n[0] for n in best_5_sell_order_logs], [n[1] for n in best_5_sell_order_logs], 'k:', label='Ask')
+    ax.plot(
+        [n[0] for n in (best_5_buy_order_logs + best_5_sell_order_logs)],
+        [avg_price for n in (best_5_buy_order_logs + best_5_sell_order_logs)],
+        'k',
+        label='MID',
+    )
+    legend = ax.legend(loc='upper center', shadow=True, fontsize='x-large')
+    path = 'part3.png'
+    fig.suptitle('Отчет', fontsize=10)
+    plt.savefig(path)
 
 def part4(session):
     pass
